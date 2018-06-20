@@ -38,6 +38,7 @@
 #include "scene/3d/physics_body.h"
 #include "scene/main/viewport.h"
 #include "scene/resources/packed_scene.h"
+#include "scene/resources/material.h"
 
 void MeshLibraryEditor::edit(const Ref<MeshLibrary> &p_theme) {
 
@@ -98,7 +99,23 @@ void MeshLibraryEditor::_import_scene(Node *p_scene, Ref<MeshLibrary> p_library,
 		}
 
 		p_library->set_item_mesh(id, mesh);
+		
+		Vector<Ref<Material>> materials;
+		
+		for (int j = 0; j < mesh->get_surface_count(); j++)
+		{
+			Ref<Material> mat = mi->get_surface_material(j);
+			
+			if (mat.is_null())
+			{
+				mat = mesh->surface_get_material(j);
+			}
+			
+			materials.push_back(mat);
+		}
 
+		p_library->set_item_materials(id, materials);
+		
 		Vector<MeshLibrary::ShapeData> collisions;
 
 		for (int j = 0; j < mi->get_child_count(); j++) {
@@ -156,7 +173,35 @@ void MeshLibraryEditor::_import_scene(Node *p_scene, Ref<MeshLibrary> p_library,
 		Vector<Ref<Mesh> > meshes;
 		Vector<int> ids = p_library->get_item_list();
 		for (int i = 0; i < ids.size(); i++) {
-			meshes.push_back(p_library->get_item_mesh(ids[i]));
+			Ref<Mesh> srcMesh = p_library->get_item_mesh(ids[i]);
+			Ref<ArrayMesh> dstMesh = memnew(ArrayMesh);
+			
+			Vector<Ref<Material>> materials = p_library->get_item_materials(ids[i]);
+			
+			for (int j = 0; j < srcMesh->get_surface_count(); j++)
+			{
+				Array surfaces = srcMesh->surface_get_arrays(j);
+				Array blends = srcMesh->surface_get_blend_shape_arrays(j);
+				
+				Mesh::PrimitiveType primType = srcMesh->surface_get_primitive_type(j);
+				
+				uint32_t fmt = srcMesh->surface_get_format(j);
+				
+				Ref<Material> material = srcMesh->surface_get_material(j);
+				
+				if (material.is_null() || j < materials.size())
+				{
+					if (!materials[j].is_null())
+					{
+						material = materials[j];
+					}
+				}
+				
+				dstMesh->add_surface_from_arrays(primType, surfaces, blends, fmt);
+				dstMesh->surface_set_material(j, material);
+			}
+			
+			meshes.push_back(dstMesh);
 		}
 
 		Vector<Ref<Texture> > textures = EditorInterface::get_singleton()->make_mesh_previews(meshes, EditorSettings::get_singleton()->get("editors/grid_map/preview_size"));

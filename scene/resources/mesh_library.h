@@ -33,6 +33,7 @@
 
 #include "map.h"
 #include "mesh.h"
+#include "material.h"
 #include "resource.h"
 #include "scene/3d/navigation_mesh.h"
 #include "shape.h"
@@ -53,12 +54,15 @@ public:
 		Vector<ShapeData> shapes;
 		Ref<Texture> preview;
 		Ref<NavigationMesh> navmesh;
+		Vector<Ref<Material>> materials;
 	};
 
 	Map<int, Item> item_map;
 
 	void _set_item_shapes(int p_item, const Array &p_shapes);
+	void _set_item_materials(int p_item, const Array &p_materials);
 	Array _get_item_shapes(int p_item) const;
+	Array _get_item_materials(int p_item) const;
 
 protected:
 	bool _set(const StringName &p_name, const Variant &p_value);
@@ -71,11 +75,15 @@ public:
 	void create_item(int p_item);
 	void set_item_name(int p_item, const String &p_name);
 	void set_item_mesh(int p_item, const Ref<Mesh> &p_mesh);
+	void set_item_materials(int p_item, const Vector<Ref<Material>> &p_materials);
+	void set_item_material(int p_item, const Ref<Material> &p_material, int p_surface);
 	void set_item_navmesh(int p_item, const Ref<NavigationMesh> &p_navmesh);
 	void set_item_shapes(int p_item, const Vector<ShapeData> &p_shapes);
 	void set_item_preview(int p_item, const Ref<Texture> &p_preview);
 	String get_item_name(int p_item) const;
 	Ref<Mesh> get_item_mesh(int p_item) const;
+	Vector<Ref<Material>> get_item_materials(int p_item) const;
+	Ref<Material> get_item_material(int p_item, int p_surface) const;
 	Ref<NavigationMesh> get_item_navmesh(int p_item) const;
 	Vector<ShapeData> get_item_shapes(int p_item) const;
 	Ref<Texture> get_item_preview(int p_item) const;

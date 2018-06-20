@@ -37,6 +37,7 @@ bool MeshLibrary::_set(const StringName &p_name, const Variant &p_value) {
 
 		int idx = name.get_slicec('/', 1).to_int();
 		String what = name.get_slicec('/', 2);
+
 		if (!item_map.has(idx))
 			create_item(idx);
 
@@ -44,7 +45,10 @@ bool MeshLibrary::_set(const StringName &p_name, const Variant &p_value) {
 			set_item_name(idx, p_value);
 		else if (what == "mesh")
 			set_item_mesh(idx, p_value);
-		else if (what == "shape") {
+		else if (what == "material") {
+			int which = name.get_slicec('/', 3).to_int();
+			set_item_material(idx, p_value, which);
+		} else if (what == "shape") {
 			Vector<ShapeData> shapes;
 			ShapeData sd;
 			sd.shape = p_value;
@@ -76,7 +80,10 @@ bool MeshLibrary::_get(const StringName &p_name, Variant &r_ret) const {
 		r_ret = get_item_name(idx);
 	else if (what == "mesh")
 		r_ret = get_item_mesh(idx);
-	else if (what == "shapes")
+	else if (what == "material") {
+		int which = name.get_slicec('/', 3).to_int();
+		r_ret = get_item_material(idx, which);
+	} else if (what == "shapes")
 		r_ret = _get_item_shapes(idx);
 	else if (what == "navmesh")
 		r_ret = get_item_navmesh(idx);
@@ -98,6 +105,11 @@ void MeshLibrary::_get_property_list(List<PropertyInfo> *p_list) const {
 		p_list->push_back(PropertyInfo(Variant::ARRAY, name + "shapes"));
 		p_list->push_back(PropertyInfo(Variant::OBJECT, name + "navmesh", PROPERTY_HINT_RESOURCE_TYPE, "NavigationMesh"));
 		p_list->push_back(PropertyInfo(Variant::OBJECT, name + "preview", PROPERTY_HINT_RESOURCE_TYPE, "Texture", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_EDITOR_HELPER));
+		
+		for (int i = 0; i < E->value().materials.size(); i++)
+		{
+			p_list->push_back(PropertyInfo(Variant::OBJECT, name + "material/" + itos(i), PROPERTY_HINT_RESOURCE_TYPE, "ShaderMaterial,SpatialMaterial"));
+		}
 	}
 }
 
@@ -116,6 +128,7 @@ void MeshLibrary::set_item_name(int p_item, const String &p_name) {
 	emit_changed();
 	_change_notify();
 }
+
 void MeshLibrary::set_item_mesh(int p_item, const Ref<Mesh> &p_mesh) {
 
 	ERR_FAIL_COND(!item_map.has(p_item));
@@ -124,6 +137,34 @@ void MeshLibrary::set_item_mesh(int p_item, const Ref<Mesh> &p_mesh) {
 	emit_changed();
 	_change_notify();
 }
+
+void MeshLibrary::set_item_materials(int p_item, const Vector<Ref<Material>> &p_materials) {
+
+	ERR_FAIL_COND(!item_map.has(p_item));
+	item_map[p_item].materials = p_materials;
+	notify_change_to_owners();
+	emit_changed();
+	_change_notify();
+}
+
+void MeshLibrary::set_item_material(int p_item, const Ref<Material> &p_material, int p_surface) {
+
+	ERR_FAIL_COND(!item_map.has(p_item));
+	
+	Vector<Ref<Material>>* materials = &item_map[p_item].materials;
+	
+	if (p_surface >= materials->size())
+	{
+		materials->resize(p_surface + 1);
+	}
+	
+	item_map[p_item].materials[p_surface] = p_material;
+	
+	notify_change_to_owners();
+	emit_changed();
+	_change_notify();
+}
+
 
 void MeshLibrary::set_item_shapes(int p_item, const Vector<ShapeData> &p_shapes) {
 
@@ -157,10 +198,23 @@ String MeshLibrary::get_item_name(int p_item) const {
 	ERR_FAIL_COND_V(!item_map.has(p_item), "");
 	return item_map[p_item].name;
 }
+
 Ref<Mesh> MeshLibrary::get_item_mesh(int p_item) const {
 
 	ERR_FAIL_COND_V(!item_map.has(p_item), Ref<Mesh>());
 	return item_map[p_item].mesh;
+}
+
+Vector<Ref<Material>> MeshLibrary::get_item_materials(int p_item) const {
+
+	ERR_FAIL_COND_V(!item_map.has(p_item), Vector<Ref<Material>>());
+	return item_map[p_item].materials;
+}
+
+Ref<Material> MeshLibrary::get_item_material(int p_item, int p_surface) const {
+
+	ERR_FAIL_COND_V(!item_map.has(p_item), Ref<Material>());
+	return item_map[p_item].materials[p_surface];
 }
 
 Vector<MeshLibrary::ShapeData> MeshLibrary::get_item_shapes(int p_item) const {
@@ -185,6 +239,7 @@ bool MeshLibrary::has_item(int p_item) const {
 
 	return item_map.has(p_item);
 }
+
 void MeshLibrary::remove_item(int p_item) {
 
 	ERR_FAIL_COND(!item_map.has(p_item));
@@ -250,6 +305,21 @@ void MeshLibrary::_set_item_shapes(int p_item, const Array &p_shapes) {
 	set_item_shapes(p_item, shapes);
 }
 
+void MeshLibrary::_set_item_materials(int p_item, const Array &p_materials) {
+
+	ERR_FAIL_COND(p_materials.size() & 1);
+	
+	Vector<Ref<Material>> materials;
+	for (int i = 0; i < p_materials.size(); i++)
+	{
+		Ref<Material> material = p_materials[i];
+		
+		materials.push_back(material);
+	}
+	
+	set_item_materials(p_item, materials);
+}
+
 Array MeshLibrary::_get_item_shapes(int p_item) const {
 
 	Vector<ShapeData> shapes = get_item_shapes(p_item);
@@ -262,16 +332,31 @@ Array MeshLibrary::_get_item_shapes(int p_item) const {
 	return ret;
 }
 
+Array MeshLibrary::_get_item_materials(int p_item) const {
+
+	Vector<Ref<Material>> materials = get_item_materials(p_item);
+	Array ret;
+	for (int i = 0; i < materials.size(); i++) {
+		ret.push_back(materials[i]);
+	}
+
+	return ret;
+}
+
 void MeshLibrary::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("create_item", "id"), &MeshLibrary::create_item);
 	ClassDB::bind_method(D_METHOD("set_item_name", "id", "name"), &MeshLibrary::set_item_name);
 	ClassDB::bind_method(D_METHOD("set_item_mesh", "id", "mesh"), &MeshLibrary::set_item_mesh);
+	ClassDB::bind_method(D_METHOD("set_item_materials", "id", "materials"), &MeshLibrary::_set_item_materials);
+	ClassDB::bind_method(D_METHOD("set_item_material", "id", "material", "idx"), &MeshLibrary::set_item_material);
 	ClassDB::bind_method(D_METHOD("set_item_navmesh", "id", "navmesh"), &MeshLibrary::set_item_navmesh);
 	ClassDB::bind_method(D_METHOD("set_item_shapes", "id", "shapes"), &MeshLibrary::_set_item_shapes);
 	ClassDB::bind_method(D_METHOD("set_item_preview", "id", "texture"), &MeshLibrary::set_item_preview);
 	ClassDB::bind_method(D_METHOD("get_item_name", "id"), &MeshLibrary::get_item_name);
 	ClassDB::bind_method(D_METHOD("get_item_mesh", "id"), &MeshLibrary::get_item_mesh);
+	ClassDB::bind_method(D_METHOD("get_item_material", "id", "idx"), &MeshLibrary::get_item_material);
+	ClassDB::bind_method(D_METHOD("get_item_materials", "id"), &MeshLibrary::_get_item_materials);
 	ClassDB::bind_method(D_METHOD("get_item_navmesh", "id"), &MeshLibrary::get_item_navmesh);
 	ClassDB::bind_method(D_METHOD("get_item_shapes", "id"), &MeshLibrary::_get_item_shapes);
 	ClassDB::bind_method(D_METHOD("get_item_preview", "id"), &MeshLibrary::get_item_preview);

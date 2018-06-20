@@ -37,6 +37,7 @@
 #include "io/marshalls.h"
 #include "os/os.h"
 #include "scene/resources/mesh_library.h"
+#include "scene/3d/mesh_instance.h"
 #include "scene/scene_string_names.h"
 
 bool GridMap::_set(const StringName &p_name, const Variant &p_value) {
@@ -537,8 +538,40 @@ bool GridMap::_octant_update(const OctantKey &p_key) {
 
 			RID mm = VS::get_singleton()->multimesh_create();
 			VS::get_singleton()->multimesh_allocate(mm, E->get().size(), VS::MULTIMESH_TRANSFORM_3D, VS::MULTIMESH_COLOR_NONE);
-			VS::get_singleton()->multimesh_set_mesh(mm, theme->get_item_mesh(E->key())->get_rid());
-
+			
+			Ref<Mesh> srcMesh = theme->get_item_mesh(E->key());
+			Ref<ArrayMesh> dstMesh = memnew(ArrayMesh);
+			
+			Vector<Ref<Material>> materials = theme->get_item_materials(E->key());
+			
+			for (int j = 0; j < srcMesh->get_surface_count(); j++)
+			{
+				Array surfaces = srcMesh->surface_get_arrays(j);
+				Array blends = srcMesh->surface_get_blend_shape_arrays(j);
+				
+				Mesh::PrimitiveType primType = srcMesh->surface_get_primitive_type(j);
+				
+				uint32_t fmt = srcMesh->surface_get_format(j);
+				
+				Ref<Material> material = srcMesh->surface_get_material(j);
+				
+				if (material.is_null() || j < materials.size())
+				{
+					if (!materials[j].is_null())
+					{
+						material = materials[j];
+					}
+				}
+				
+				dstMesh->add_surface_from_arrays(primType, surfaces, blends, fmt);
+				dstMesh->surface_set_material(j, material);
+			}
+			
+			MeshInstance *dstmi = memnew(MeshInstance);
+			dstmi->set_mesh(dstMesh);
+			
+			VS::get_singleton()->multimesh_set_mesh(mm, dstmi->get_mesh()->get_rid());
+			
 			int idx = 0;
 			for (List<Pair<Transform, IndexKey> >::Element *F = E->get().front(); F; F = F->next()) {
 				VS::get_singleton()->multimesh_instance_set_transform(mm, idx, F->get().first);
@@ -1021,6 +1054,8 @@ void GridMap::make_baked_meshes(bool p_gen_lightmap_uv, float p_lightmap_uv_texe
 		Ref<Mesh> mesh = theme->get_item_mesh(item);
 		if (!mesh.is_valid())
 			continue;
+		
+		Vector<Ref<Material>> materials = theme->get_item_materials(item);
 
 		Vector3 cellpos = Vector3(key.x, key.y, key.z);
 		Vector3 ofs = _get_offset();
@@ -1046,8 +1081,12 @@ void GridMap::make_baked_meshes(bool p_gen_lightmap_uv, float p_lightmap_uv_texe
 
 			if (mesh->surface_get_primitive_type(i) != Mesh::PRIMITIVE_TRIANGLES)
 				continue;
+			
+			Ref<Material> surf_mat = materials[i];
 
-			Ref<Material> surf_mat = mesh->surface_get_material(i);
+			if (surf_mat.is_null())
+				surf_mat = mesh->surface_get_material(i);
+			
 			if (!mat_map.has(surf_mat)) {
 				Ref<SurfaceTool> st;
 				st.instance();
